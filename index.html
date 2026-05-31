@@ -6,37 +6,39 @@
     <title>奏録 / SOUROKU Web版</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif; margin: 0; padding: 0; background: #F8FAFC; color: #1E293B; display: flex; justify-content: center; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0; background: #0c0e12; color: #f0f2f5; display: flex; justify-content: center; }
         
-        /* 全体コンテナ（Google Sitesの洗練された白ベースを忠実に再現） */
-        .container { width: 100%; max-width: 480px; height: 100vh; background: #FFFFFF; padding: 16px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.05); overflow: hidden; }
+        /* 送信画像のデザイン（角丸のダークパネル）を忠実に再現 */
+        .container { width: 100%; max-width: 480px; height: 100vh; background: #0c0e12; padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* 固定ヘッダーエリア */
-        .fixed-header-panel { display: flex; flex-direction: column; flex-shrink: 0; background: #FFFFFF; z-index: 10; }
+        /* 固定ヘッダーパネル */
+        .fixed-header-panel { display: flex; flex-direction: column; flex-shrink: 0; background: #0c0e12; z-index: 10; }
 
-        /* タイトル（ご指定の文字に変更 ＆ サイトと同じスマートなデザイン） */
-        h3 { margin: 5px 0 15px 0; color: #1E3A8A; text-align: center; font-size: 19px; font-weight: 700; letter-spacing: 0.5px; border-bottom: 2px solid #E2E8F0; padding-bottom: 10px; }
+        /* タイトル */
+        h3 { margin: 5px 0 15px 0; color: #00d2ff; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 0.5px; border-bottom: 1px solid #1a1e26; padding-bottom: 10px; }
         
-        /* 1. 音源・フォルダ切り替えエリア */
-        .selector-panel { margin-bottom: 12px; }
-        select { width: 100%; padding: 12px; font-size: 14px; border-radius: 8px; border: 1px solid #CBD5E1; background: #F1F5F9; color: #0F172A; font-weight: bold; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02); }
+        /* 1.セッション選択 パネル */
+        .selector-panel { background: #131722; padding: 12px; border-radius: 8px; border: 1px solid #1e2433; margin-bottom: 12px; }
+        .panel-title { font-size: 13px; font-weight: bold; color: #00d2ff; margin-bottom: 8px; }
+        select { width: 100%; padding: 12px; font-size: 14px; border-radius: 6px; border: 1px solid #2a3247; background: #1c2230; color: #fff; font-weight: bold; outline: none; }
 
-        /* 2. スマホ用プレイヤー（サイトのトーンに合わせた清潔感のあるライトパネル） */
-        .player-panel { background: #F8FAFC; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid #E2E8F0; }
-        audio { width: 100%; height: 36px; } 
-        .time-display { font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; text-align: right; padding-right: 4px; color: #64748B; }
+        /* 2.プレイヤーパネル（画像のような光るネオンシアンの外枠線を再現） */
+        .player-panel { background: #131722; padding: 12px; border-radius: 8px; border: 1px solid #00d2ff; box-shadow: 0 0 10px rgba(0,210,255,0.2); margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+        audio { width: 100%; height: 38px; filter: invert(90%) hue-rotate(180deg); } /* プレイヤーのダークモード化 */
+        .time-display { font-family: monospace; font-size: 13px; font-weight: bold; text-align: right; padding-right: 4px; color: #00d2ff; }
 
-        /* 3. タイムラインキャンバス */
-        .timeline-container { width: 100%; margin-bottom: 15px; height: 38px; }
-        canvas { width: 100%; height: 100%; background: #F1F5F9; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #E2E8F0; }
+        /* 3.色分けタイムラインキャンバス */
+        .timeline-container { width: 100%; margin-bottom: 15px; height: 35px; }
+        canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; }
 
-        /* 4. スクロール議事録エリア（独立スクロール） */
-        .editor-container { border: 1px solid #E2E8F0; border-radius: 8px; flex: 1; overflow-y: auto; background: #FFFFFF; -webkit-overflow-scrolling: touch; padding: 4px; }
-        .line { padding: 14px 12px; border-bottom: 1px solid #F1F5F9; font-size: 14px; line-height: 1.6; cursor: pointer; color: #334155; -webkit-tap-highlight-color: transparent; transition: background 0.1s; }
-        .line:hover { background: #F8FAFC; }
+        /* 4.Session Logs スクロールエリア（独立スクロール） */
+        .log-header-title { font-size: 14px; font-weight: bold; color: #8f9cae; margin-bottom: 8px; padding-left: 4px; border-left: 3px solid #8f9cae; }
+        .editor-container { border: 1px solid #1e2433; border-radius: 8px; flex: 1; overflow-y: auto; background: #131722; -webkit-overflow-scrolling: touch; padding: 4px; }
+        .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; }
+        .line:hover { background: #1c2230; }
         
-        /* ハイライト（Google Sitesのアクセントに合わせた深みのある群青色） */
-        .highlight { background: #EFF6FF !important; font-weight: bold; color: #1E3A8A; border-left: 5px solid #2563EB; padding-left: 7px; }
+        /* ハイライト（画像内の鮮やかなライトブルーに調和させた選択行） */
+        .highlight { background: #1c2c42 !important; font-weight: bold; color: #fff; border-left: 5px solid #00d2ff; padding-left: 7px; }
     </style>
 </head>
 <body>
@@ -45,22 +47,30 @@
     <div class="fixed-header-panel">
         <h3>奏録 / SOUROKU</h3>
         
+        <!-- 1.セッション選択 -->
         <div class="selector-panel">
+            <div class="panel-title">1.セッション選択</div>
             <select id="folder-selector" onchange="changeFolder(this.value)"></select>
         </div>
         
+        <!-- プレイヤー -->
         <div class="player-panel">
             <audio id="audio" controls></audio>
             <div class="time-display" id="time-display">00:00 / 00:00</div>
         </div>
 
+        <!-- タイムラインマップ -->
         <div class="timeline-container">
             <canvas id="timeline-canvas"></canvas>
         </div>
+        
+        <!-- Session Logs タイトル -->
+        <div class="log-header-title">Session Logs</div>
     </div>
 
+    <!-- ここから下の議事録ログのみがスクロールします -->
     <div class="editor-container" id="editor">
-        <div style="color: #64748B; text-align: center; padding-top: 100px; font-size:13px;">データを読み込み中...</div>
+        <div style="color: #64748b; text-align: center; padding-top: 60px; font-size:13px;">データを読み込み中...</div>
     </div>
 </div>
 
@@ -98,12 +108,12 @@
                 if (folders.length > 0) changeFolder(folders);
             })
             .catch(err => {
-                editor.innerHTML = `<div style="color:#EF5350; text-align:center; padding-top:50px; font-size:13px;">data/list.txt が見つかりません。</div>`;
+                editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
             });
     }
     function changeFolder(folderName) {
         audio.pause();
-        editor.innerHTML = `<div style="color: #64748B; text-align: center; padding-top: 100px;">読み込み中...</div>`;
+        editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
         
         colorData = {};
         textTimestamps = [];
@@ -126,7 +136,7 @@
             parseColor(colorRaw);
             resizeCanvas();
         }).catch(err => {
-            editor.innerHTML = `<div style="color:#EF5350; text-align:center; padding-top:50px; font-size:13px;">データ配置を確認してください。</div>`;
+            editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">データ配置を確認してください。</div>`;
         });
     }
 
@@ -148,7 +158,7 @@
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
                     const parts = trimmed.split(']');
-                    const tStr = parts[0].replace('[', '');
+                    const tStr = parts.replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
                     seconds = m * 60 + s;
                 } catch(e) {}
@@ -172,8 +182,8 @@
             const trimmed = line.trim();
             if (!trimmed || !trimmed.includes(' ')) return;
             const parts = trimmed.split(' ');
-            const tStr = parts[0];
-            const status = parts[1];
+            const tStr = parts;
+            const status = parts;
             try {
                 const [m, s] = tStr.replace('[', '').replace(']', '').split(':').map(Number);
                 colorData[m * 60 + s] = status.trim();
@@ -203,15 +213,15 @@
             const x0 = s * secWidth;
             const status = colorData[s] || "SILENT";
             
-            // 提示ページのトーンに沿った、明るく品のある配色にチューニング
-            if (status === "SPEECH") ctx.fillStyle = "#EF4444";      // 指導：クリアなレッド
-            else if (status === "MUSIC") ctx.fillStyle = "#3B82F6";   // 演奏：鮮やかなブルー
-            else ctx.fillStyle = "#94A3B8";                         // 無音：落ち着いたスレートグレー
+            // このタイムラインの配色も、サイバーテーマに完全にマッチするトーンに設定
+            if (status === "SPEECH") ctx.fillStyle = "#ff4a5a";      // 指導：ネオンレッド
+            else if (status === "MUSIC") ctx.fillStyle = "#00a2ff";   // 演奏：ネオンブルー
+            else ctx.fillStyle = "#2a3247";                         // 無音：沈み込むダークグレー
             
             ctx.fillRect(x0, 0, secWidth + 0.6, canvas.height);
         }
         const indX = (currentSec / totalDuration) * canvas.width;
-        ctx.fillStyle = "#1E3A8A"; // インジケーター線をアクセントの群青色に変更
+        ctx.fillStyle = "#00d2ff"; // 再生縦線は最も眩しいネオンシアンに変更
         ctx.fillRect(indX - 1, 0, 3, canvas.height);
     }
 
@@ -243,6 +253,8 @@
             }
         }
     }
+
+    function __dummy__() {} // 文字切れ防止ダミー
 
     function updateTimeLabel() {
         const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
