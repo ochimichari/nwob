@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>合奏指導プレイヤー 複数音源対応Web版</title>
+    <title>合奏指導プレイヤー Web版</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 10px; background: #ECEFF1; color: #333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 10px; background: #ECEFF1; color: #333; }
         .container { max-width: 480px; margin: 0 auto; background: white; padding: 12px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: calc(100vh - 20px); }
         h3 { margin: 0 0 10px 0; color: #1E88E5; text-align: center; font-size: 16px; border-bottom: 2px solid #2196F3; padding-bottom: 6px; }
         
@@ -31,13 +31,7 @@
     <h3>🎵 合奏指導プレイヤー Mobile</h3>
     
     <div class="selector-panel">
-        <select id="folder-selector" onchange="changeFolder(this.value)">
-            <!-- 選択メニュー（実際のフォルダ名に合わせてここを増やせます） -->
-            <option value="20260516_airs">2026/05/16 エアーズ</option>
-            <option value="20260516_sakura">2026/05/16 さくらのうた</option>
-            <option value="20260516_kten">2026/05/16 K点をこえて</option>
-            <option value="20260516_suteki">2026/05/16 すてきな日々</option>
-        </select>
+        <select id="folder-selector" onchange="changeFolder(this.value)"></select>
     </div>
     
     <div class="player-panel">
@@ -73,6 +67,25 @@
     }
     window.addEventListener('resize', resizeCanvas);
 
+    // list.txt からフォルダ一覧を読み込む
+    function loadFolderList() {
+        fetch('data/list.txt')
+            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            .then(rawText => {
+                selector.innerHTML = '';
+                const folders = rawText.split('\n').map(f => f.trim()).filter(f => f.length > 0);
+                folders.forEach(folder => {
+                    const opt = document.createElement('option');
+                    opt.value = folder;
+                    opt.innerText = folder.replace(/_/g, ' ');
+                    selector.appendChild(opt);
+                });
+                if (folders.length > 0) changeFolder(folders[0]);
+            })
+            .catch(err => {
+                editor.innerHTML = `<div style="color:red; text-align:center; padding-top:50px; font-size:13px;">data/list.txt が見つかりません。</div>`;
+            });
+    }
     function changeFolder(folderName) {
         audio.pause();
         editor.innerHTML = `<div style="color: gray; text-align: center; padding-top: 100px;">読み込み中...</div>`;
@@ -81,7 +94,6 @@
         textTimestamps = [];
         totalDuration = 0;
 
-        // フォルダ名からファイル名を自動計算（例: 20260516_airs -> airs）
         let fileName = folderName;
         if (folderName.includes('_')) {
             const parts = folderName.split('_');
@@ -91,21 +103,16 @@
         audio.src = `data/${folderName}/${fileName}.mp3`;
         audio.load();
 
+        // テキストと色分けデータの読み込み
         Promise.all([
-            fetch(`data/${folderName}/${fileName}.txt`).then(res => {
-                if (!res.ok) throw new Error();
-                return res.text();
-            }),
-            fetch(`data/${folderName}/${fileName}_color.txt`).then(res => {
-                if (!res.ok) throw new Error();
-                return res.text();
-            })
+            fetch(`data/${folderName}/${fileName}.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
+            fetch(`data/${folderName}/${fileName}_color.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
         ]).then(([textRaw, colorRaw]) => {
             parseText(textRaw);
             parseColor(colorRaw);
             resizeCanvas();
         }).catch(err => {
-            editor.innerHTML = `<div style="color:red; text-align:center; padding-top:50px; font-size:13px;">データが見つかりません。<br>data/${folderName}/${fileName}.txt などの配置を確認してください。</div>`;
+            editor.innerHTML = `<div style="color:red; text-align:center; padding-top:50px; font-size:13px;">データ配置を確認してください。</div>`;
         });
     }
 
@@ -126,7 +133,6 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
-                    // 【バグ修正】安全に時間文字列を切り出して秒数に変換
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -227,7 +233,7 @@
         timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
     }
 
-    window.onload = () => { changeFolder(selector.value); };
+    window.onload = () => { loadFolderList(); };
 </script>
 
 </body>
