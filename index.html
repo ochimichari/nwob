@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合奏指導 音源連動プレイヤー</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; bg: #F5F5F5; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { border-bottom: 2px solid #2196F3; padding-bottom: 10px; margin-top: 0; color: #1E88E5; }
+        
+        /* プレイヤーエリア */
+        .player-panel { display: flex; align-items: center; justify-content: space-between; background: #ECEFF1; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        audio { width: 70%; }
+        .time-display { font-weight: bold; font-family: monospace; font-size: 16px; }
+
+        /* タイムラインキャンバス */
+        .timeline-container { position: relative; margin-bottom: 20px; }
+        canvas { width: 100%; height: 40px; background: #E0E0E0; border-radius: 4px; cursor: pointer; }
+
+        /* 議事録エリア */
+        .editor-container { border: 1px solid #CFD8DC; border-radius: 6px; height: 350px; overflow-y: scroll; background: white; padding: 10px; }
+        .line { padding: 8px; border-bottom: 1px solid #F5F5F5; cursor: pointer; transition: background 0.2s; white-space: pre-wrap; }
+        .line:hover { background: #F5F5F5; }
+        .highlight { background: #E3F2FD !important; font-weight: bold; border-left: 4px solid #2196F3; padding-left: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🎵 合奏指導 音源連動プレイヤー Web版</h2>
+    
+    <!-- 1. プレイヤーパネル -->
+    <div class="player-panel">
+        <!-- 【重要】あなたの作成したMP3ファイル名に合わせてここを書き換えてください -->
+        <audio id="audio" src="airs.mp3" controls></audio>
+        <div class="time-display" id="time-display">00:00 / 00:00</div>
+    </div>
+
+    <!-- 2. ビジュアルタイムライン -->
+    <div class="timeline-container">
+        <canvas id="timeline-canvas" height="40"></canvas>
+    </div>
+
+    <!-- 3. 議事録エディタ表示 -->
+    <div class="editor-container" id="editor">
+        <div style="color: gray; text-align: center; padding-top: 100px;">データを読み込み中...</div>
+    </div>
+</div>
+
+<script>
+    const audio = document.getElementById('audio');
+    const canvas = document.getElementById('timeline-canvas');
+    const ctx = canvas.getContext('2d');
+    const editor = document.getElementById('editor');
+    const timeDisplay = document.getElementById('time-display');
+
+    let totalDuration = 0;
+    let colorData = {};      // 秒数ごとのステータス
+    let textTimestamps = []; // 各行の秒数
+
+    // 画面サイズに合わせてキャンバスの横幅を確定
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        drawTimeline();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // 【重要】自動で同じフォルダ内にある txt と color.txt を通信読み込みする
+    // ※ ローカルのMP3名・ファイル名が「airs」の場合の例です
+    const baseName = "airs"; 
+
+    Promise.all([
+        fetch(`${baseName}.txt`).then(res => res.text()),
+        fetch(`${baseName}_color.txt`).then(res => res.text())
+    ]).then(([textRaw, colorRaw]) => {
+        parseText(textRaw);
+        parseColor(colorRaw);
+        resizeCanvas();
+    }).catch(err => {
+        editor.innerHTML = `<div style="color:red; text-align:center;">ファイルの読み込みに失敗しました。サーバー上に配置してください。</div>`;
+    });
+
+    // 文字起こしの解析
+    function parseText(raw) {
+        editor.innerHTML = '';
+        const lines = raw.split('\n');
+        lines.forEach((line, index) => {
+            if (!line.trim()) return;
+            
+            const div = document.createElement('div');
+            div.className = 'line';
+            div.innerText = line;
+            div.id = `line-${index}`;
+            
+            // 行頭の [01:23] から秒数を計算
+            let seconds = -1;
+            if (line.startsWith('[') && line.includes(']')) {
+                const tStr = line.split(']')[0].replace('[', '');
+                const [m, s] = tStr.split(':').map(Number);
+                seconds = m * 60 + s;
+            }
+            textTimestamps.push(seconds);
+
+            // ダブルクリック（スマホならタップ）でその時間にジャンプ再生
+            div.addEventListener('click', () => {
+                if (seconds !== -1) audio.currentTime = seconds;
+            });
+            editor.appendChild(div);
+        });
+    }
+
+    // 色分けデータの解析
+    function parseColor(raw) {
+        const lines = raw.split('\n');
+        lines.forEach(line => {
+            if (!line.includes(' ')) return;
+            const [tStr, status] = line.trim().split(' ');
+            try {
+                const [m, s] = tStr.replace('[', '').replace(']', '').split(':').map(Number);
+                colorData[m * 60 + s] = status.trim();
+            } catch(e) {}
+        });
+    }
+
+    // 音声データの準備ができたら長さを取得
+    audio.addEventListener('loadedmetadata', () => {
+        totalDuration = Math.floor(audio.duration);
+        updateTimeLabel();
+        resizeCanvas();
+    });
+
+    // 再生位置が1秒進むごとに呼ばれる同期処理
+    audio.addEventListener('timeupdate', () => {
+        const currentSeconds = Math.floor(audio.currentTime);
+        updateTimeLabel();
+        drawTimeline(currentSeconds);
+        syncEditorScroll(currentSeconds);
+    });
+
+    // タイムラインの描画（背景色分け ＋ 黒い縦線インジケーター）
+    function drawTimeline(currentSec = 0) {
+        if (!totalDuration) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const secWidth = canvas.width / totalDuration;
+        
+        for (let s = 0; s < totalDuration; s++) {
+            const x0 = s * secWidth;
+            const status = colorData[s] || "SILENT";
+            
+            if (status === "SPEECH") ctx.fillStyle = "#EF5350";      // 赤
+            else if (status === "MUSIC") ctx.fillStyle = "#42A5F5"; // 青
+            else ctx.fillStyle = "#B0BEC5";                         // グレー
+            
+            ctx.fillRect(x0, 0, secWidth + 0.5, canvas.height);
+        }
+        
+        // 再生位置バー（縦線）
+        const indX = (currentSec / totalDuration) * canvas.width;
+        ctx.fillStyle = "black";
+        ctx.fillRect(indX - 1, 0, 3, canvas.height);
+    }
+
+    // タイムラインクリック時のシーク連動
+    canvas.addEventListener('click', (e) => {
+        if (!totalDuration) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const targetSec = Math.floor((clickX / canvas.width) * totalDuration);
+        audio.currentTime = targetSec;
+    });
+
+    // 議事録の自動スクロール ＆ ハイライト同期
+    function syncEditorScroll(currentSec) {
+        let targetIdx = -1;
+        for (let i = 0; i < textTimestamps.length; i++) {
+            if (textTimestamps[i] !== -1 && textTimestamps[i] <= currentSec) {
+                targetIdx = i;
+            } else {
+                break;
+            }
+        }
+        
+        // ハイライトの付け替え
+        document.querySelectorAll('.line').forEach(el => el.classList.remove('highlight'));
+        if (targetIdx !== -1) {
+            const activeLine = document.getElementById(`line-${targetIdx}`);
+            if (activeLine) {
+                activeLine.classList.add('highlight');
+                // スムーズにスクロール移動
+                activeLine.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+    }
+
+    function updateTimeLabel() {
+        const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
+        const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
+        const totM = String(Math.floor(totalDuration / 60)).padStart(2, '0');
+        const totS = String(Math.floor(totalDuration % 60)).padStart(2, '0');
+        timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
+    }
+</script>
+
+</body>
+</html>
