@@ -202,7 +202,7 @@
         for (let s = 0; s < totalDuration; s++) {
             const x0 = s * secWidth;
             const status = colorData[s] || "SILENT";
-            if (status === "SPEECH") ctx.fillStyle = "#ff4a5a";
+            if (status === "SPEECH") ctx.fillStyle = "#aa4a5a";
             else if (status === "MUSIC") ctx.fillStyle = "#00a2ff";
             else ctx.fillStyle = "#2a3247";
             ctx.fillRect(x0, 0, secWidth + 0.6, canvas.height);
