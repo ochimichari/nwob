@@ -237,18 +237,20 @@
                 const repo = (localStorage.getItem('git_repo') || "").trim();
                 const token = (localStorage.getItem('git_token') || "").trim();
                 const path = `data/${folderName}/${fileName}.txt`;
-
+                
                 if (repo && token) {
-                    fetch(`https://github.com{repo}/contents/${path}`, {
+                    // ドメイン文字が崩れないように完全に文字配列から組み立てています
+                    const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
+                    
+                    fetch(apiDomain + repo + "/contents/" + path, {
                         headers: { 
-                            "Authorization": `Bearer ${token}`,
+                            "Authorization": "Bearer " + token,
                             "Accept": "application/vnd.github+json"
                         }
                     })
                     .then(res => { if (!res.ok) throw new Error(); return res.json(); })
                     .then(json => {
                         currentFileSha = json.sha;
-                        // 日本語対応の安全なデコード方式
                         const binaryString = atob(json.content.replace(/\s/g, ''));
                         const bytes = new Uint8Array(binaryString.length);
                         for (let i = 0; i < binaryString.length; i++) {
@@ -262,6 +264,7 @@
                 } else {
                     fallbackFetch(folderName, fileName);
                 }
+                
             })
             .catch(() => { logLoadError(); });
     }
@@ -356,19 +359,23 @@
             }
             const b64Content = btoa(binary);
 
-            fetch(`https://github.com{repo}/contents/${path}`, {
+            const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
+
+            // 保存を実行する fetch 通信部分
+            fetch(apiDomain + repo + "/contents/" + path, {
                 method: "PUT",
                 headers: {
-                    "Authorization": `Bearer ${token}`,
+                    "Authorization": "Bearer " + token,
                     "Accept": "application/vnd.github+json",
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    message: `Log updated via Souroku Web Editor [${fileName}]`,
+                    message: "Log updated via Souroku Web Editor [" + fileName + "]",
                     content: b64Content,
                     sha: currentFileSha
                 })
             })
+
             .then(res => {
                 if (!res.ok) {
                     return res.json().then(errData => {
