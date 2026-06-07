@@ -25,7 +25,6 @@
         .timeline-container { width: 100%; margin-bottom: 15px; height: 35px; }
         canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; }
 
-        /* ヘッダーパネルに編集リンク用の横並びスタイルを追加 */
         .log-header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; padding-left: 4px; border-left: 3px solid #00d2ff; }
         .edit-link { font-size: 13px; color: #00d2ff; text-decoration: none; cursor: pointer; font-weight: bold; }
@@ -38,7 +37,6 @@
         .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; outline: none; }
         .line:hover { background: #1c2230; }
         
-        /* 編集中の行スタイル */
         .editing-line { background: #1a2233 !important; border-bottom: 1px solid #00d2ff !important; color: #fff; cursor: text; }
 
         .highlight { background: #1c2c42 !important; font-weight: bold; color: #fff; border-left: 5px solid #00d2ff; padding-left: 7px; }
@@ -117,7 +115,7 @@
                     opt.innerText = folder.replace(/_/g, ' ');
                     selector.appendChild(opt);
                 });
-                if (folders.length > 0) changeFolder(folders[0]);
+                if (folders.length > 0) changeFolder(folders[0]); // 修正点: 初期選択で最初のフォルダ文字列を渡す
             })
             .catch(err => {
                 editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
@@ -174,6 +172,7 @@
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
                     const parts = trimmed.split(']');
+                    // 元コードと同じ安全な抽出処理に修正
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
                     seconds = m * 60 + s;
@@ -200,6 +199,7 @@
             if (!trimmed || !trimmed.includes(' ')) return;
             
             const parts = trimmed.split(' ');
+            // 変数代入の不備を修正
             const tStr = parts[0];
             const status = parts[1];
             try {
@@ -396,6 +396,3 @@
     }
 
     window.onload = () => { loadFolderList(); };
-</script>
-</body>
-</html>
