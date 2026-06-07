@@ -25,10 +25,19 @@
         .timeline-container { width: 100%; margin-bottom: 15px; height: 35px; }
         canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; }
 
-        .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; margin-bottom: 8px; padding-left: 4px; border-left: 3px solid #00d2ff; }
+        .log-header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; padding-left: 4px; border-left: 3px solid #00d2ff; }
+        .btn-group { display: flex; gap: 6px; }
+        .btn { padding: 4px 10px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; border: none; outline: none; transition: background 0.2s; }
+        .btn-edit { background: #00d2ff; color: #0c0e12; }
+        .btn-edit.editing { background: #4caf50; color: #fff; }
+        .btn-setting { background: #1e2433; color: #8892b0; border: 1px solid #2a3247; }
+        
         .editor-container { border: 1px solid #1e2433; border-radius: 8px; flex: 1; overflow-y: auto; background: #131722; -webkit-overflow-scrolling: touch; padding: 4px; }
-        .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; }
+        .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; display: flex; align-items: center; }
         .line:hover { background: #1c2230; }
+        
+        .edit-input { width: 100%; padding: 6px 10px; font-size: 13.5px; background: #1c2230; border: 1px solid #00d2ff; color: #fff; border-radius: 4px; outline: none; font-family: inherit; }
         
         .highlight { background: #1c2c42 !important; font-weight: bold; color: #fff; border-left: 5px solid #00d2ff; padding-left: 7px; }
     </style>
@@ -53,14 +62,19 @@
             <canvas id="timeline-canvas"></canvas>
         </div>
         
-        <div class="log-header-title">Session Logs</div>
+        <div class="log-header-container">
+            <div class="log-header-title">Session Logs</div>
+            <div class="btn-group">
+                <button class="btn btn-setting" onclick="setupGitConfig()">設定</button>
+                <button id="btn-edit" class="btn btn-edit" onclick="toggleEditMode()">編集</button>
+            </div>
+        </div>
     </div>
 
     <div class="editor-container" id="editor">
         <div style="color: #64748b; text-align: center; padding-top: 60px; font-size:13px;">データを読み込み中...</div>
     </div>
 </div>
-
 <script>
     const audio = document.getElementById('audio');
     const canvas = document.getElementById('timeline-canvas');
@@ -68,10 +82,15 @@
     const editor = document.getElementById('editor');
     const timeDisplay = document.getElementById('time-display');
     const selector = document.getElementById('folder-selector');
+    const btnEdit = document.getElementById('btn-edit');
 
     let totalDuration = 0;
     let colorData = {};
     let textTimestamps = [];
+    
+    let isEditing = false;
+    let currentLoadedFolder = "";
+    let currentFileSha = ""; 
 
     function resizeCanvas() {
         canvas.width = canvas.parentElement.clientWidth;
@@ -80,8 +99,16 @@
     }
     window.addEventListener('resize', resizeCanvas);
 
+    function setupGitConfig() {
+        const repo = prompt("GitHubの『ユーザー名/リポジトリ名』を入力してください\n(例: myusername/souroku-repo)", localStorage.getItem('git_repo') || "");
+        if (repo) localStorage.setItem('git_repo', repo.trim());
+        
+        const token = prompt("GitHubの個人用アクセストークン(PAT)を入力してください", localStorage.getItem('git_token') || "");
+        if (token) localStorage.setItem('git_token', token.trim());
+    }
+
     function loadFolderList() {
-        fetch('data/list.txt')
+        fetch('data/list.txt?nocache=' + new Date().getTime())
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(rawText => {
                 selector.innerHTML = '';
@@ -98,71 +125,18 @@
                 editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
             });
     }
-    
-    function changeFolder(folderName) {
-        audio.pause();
-        editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
-        
-        colorData = {};
-        textTimestamps = [];
-        totalDuration = 0;
 
-        let fileName = folderName;
-        if (folderName.includes('_')) {
-            const parts = folderName.split('_');
-            fileName = parts[parts.length - 1];
-        }
-        
-        // ★ここを .mp3 から .m4a に書き換えます
-        audio.src = `data/${folderName}/${fileName}.m4a`;
-        audio.load();
-
-        Promise.all([
-            fetch(`data/${folderName}/${fileName}.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
-            fetch(`data/${folderName}/${fileName}_color.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
-        ]).then(([textRaw, colorRaw]) => {
-            parseText(textRaw);
-            parseColor(colorRaw);
-            resizeCanvas();
-        }).catch(err => {
-            editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">データ配置を確認してください。</div>`;
-        });
+    function fallbackFetch(folderName, fileName) {
+        fetch(`data/${folderName}/${fileName}.txt?nocache=` + new Date().getTime())
+            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            .then(textRaw => {
+                parseText(textRaw);
+                resizeCanvas();
+            }).catch(() => { logLoadError(); });
     }
 
-    function parseText(raw) {
-        editor.innerHTML = '';
-        const lines = raw.split('\n');
-        let idx = 0;
-        
-        lines.forEach((line) => {
-            const trimmed = line.trim();
-            if (!trimmed) return;
-            
-            const div = document.createElement('div');
-            div.className = 'line';
-            div.innerText = trimmed;
-            div.id = `line-${idx}`;
-            
-            let seconds = -1;
-            if (trimmed.startsWith('[') && trimmed.includes(']')) {
-                try {
-                    const parts = trimmed.split(']');
-                    const tStr = parts[0].replace('[', '');
-                    const [m, s] = tStr.split(':').map(Number);
-                    seconds = m * 60 + s;
-                } catch(e) {}
-            }
-            textTimestamps.push(seconds);
-
-            div.addEventListener('click', () => {
-                if (seconds !== -1) {
-                    audio.currentTime = seconds;
-                    audio.play();
-                }
-            });
-            editor.appendChild(div);
-            idx++;
-        });
+    function logLoadError() {
+        editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">データ配置を確認するか、設定ボタンからGitHub連携情報を入力してください。</div>`;
     }
 
     function parseColor(raw) {
@@ -191,7 +165,9 @@
         const currentSeconds = Math.floor(audio.currentTime);
         updateTimeLabel();
         drawTimeline(currentSeconds);
-        syncEditorScroll(currentSeconds);
+        if (!isEditing) {
+            syncEditorScroll(currentSeconds);
+        }
     });
 
     function drawTimeline(currentSec = 0) {
@@ -220,6 +196,186 @@
         audio.currentTime = targetSec;
     });
 
+    function updateTimeLabel() {
+        const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
+        const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
+        const totM = String(Math.floor(totalDuration / 60)).padStart(2, '0');
+        const totS = String(Math.floor(totalDuration % 60)).padStart(2, '0');
+        timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
+    }
+    function changeFolder(folderName) {
+        audio.pause();
+        editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
+        
+        if (isEditing) {
+            isEditing = false;
+            btnEdit.innerText = "編集";
+            btnEdit.classList.remove('editing');
+        }
+
+        colorData = {};
+        textTimestamps = [];
+        totalDuration = 0;
+        currentLoadedFolder = folderName;
+        currentFileSha = ""; 
+
+        let fileName = folderName;
+        if (folderName.includes('_')) {
+            const parts = folderName.split('_');
+            fileName = parts[parts.length - 1];
+        }
+        
+        audio.src = `data/${folderName}/${fileName}.m4a`;
+        audio.load();
+
+        fetch(`data/${folderName}/${fileName}_color.txt?nocache=` + new Date().getTime())
+            .then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            .then(colorRaw => {
+                parseColor(colorRaw);
+                
+                const repo = localStorage.getItem('git_repo');
+                const token = localStorage.getItem('git_token');
+                const path = `data/${folderName}/${fileName}.txt`;
+
+                if (repo && token) {
+                    fetch(`https://github.com{repo}/contents/${path}`, {
+                        headers: { "Authorization": `token ${token}` }
+                    })
+                    .then(res => { if (!res.ok) throw new Error(); return res.json(); })
+                    .then(json => {
+                        currentFileSha = json.sha;
+                        const decodedText = decodeURIComponent(escape(atob(json.content.replace(/\s/g, ''))));
+                        parseText(decodedText);
+                        resizeCanvas();
+                    })
+                    .catch(() => { fallbackFetch(folderName, fileName); });
+                } else {
+                    fallbackFetch(folderName, fileName);
+                }
+            })
+            .catch(() => { logLoadError(); });
+    }
+
+    function parseText(raw) {
+        editor.innerHTML = '';
+        textTimestamps = [];
+        const lines = raw.split('\n');
+        let idx = 0;
+        
+        lines.forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            
+            const div = document.createElement('div');
+            div.className = 'line';
+            div.innerText = trimmed;
+            div.id = `line-${idx}`;
+            
+            let seconds = -1;
+            if (trimmed.startsWith('[') && trimmed.includes(']')) {
+                try {
+                    const parts = trimmed.split(']');
+                    const tStr = parts[0].replace('[', '');
+                    const [m, s] = tStr.split(':').map(Number);
+                    seconds = m * 60 + s;
+                } catch(e) {}
+            }
+            textTimestamps.push(seconds);
+
+            div.addEventListener('click', () => {
+                if (!isEditing && seconds !== -1) {
+                    audio.currentTime = seconds;
+                    audio.play();
+                }
+            });
+            editor.appendChild(div);
+            idx++;
+        });
+    }
+
+    function toggleEditMode() {
+        const repo = localStorage.getItem('git_repo');
+        const token = localStorage.getItem('git_token');
+        
+        if (!repo || !token) {
+            alert("先に「設定」ボタンからGitHubの連携設定（リポジトリ名・トークン）を行ってください。");
+            setupGitConfig();
+            return;
+        }
+
+        const lines = document.querySelectorAll('.line');
+        
+        if (!isEditing) {
+            isEditing = true;
+            btnEdit.innerText = "保存";
+            btnEdit.classList.add('editing');
+            
+            lines.forEach(div => {
+                const currentText = div.innerText;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'edit-input';
+                input.value = currentText;
+                div.innerHTML = '';
+                div.appendChild(input);
+            });
+        } else {
+            let updatedLines = [];
+            lines.forEach(div => {
+                const input = div.querySelector('.edit-input');
+                if (input) updatedLines.push(input.value.trim());
+            });
+            
+            const fullText = updatedLines.join('\n');
+            
+            btnEdit.innerText = "通信中...";
+            btnEdit.disabled = true;
+
+            let fileName = currentLoadedFolder;
+            if (currentLoadedFolder.includes('_')) {
+                const parts = currentLoadedFolder.split('_');
+                fileName = parts[parts.length - 1];
+            }
+            const path = `data/${currentLoadedFolder}/${fileName}.txt`;
+
+            const b64Content = btoa(unescape(encodeURIComponent(fullText)));
+
+            fetch(`https://github.com{repo}/contents/${path}`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `token ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: `Log updated via Souroku Web Editor [${fileName}]`,
+                    content: b64Content,
+                    sha: currentFileSha
+                })
+            })
+            .then(res => {
+                if (!res.ok) throw new Error("API送信エラー");
+                return res.json();
+            })
+            .then(json => {
+                alert("GitHubへの上書き保存が成功しました！\n(※Pagesの反映には数分かかる場合があります)");
+                currentFileSha = json.content.sha;
+                
+                isEditing = false;
+                btnEdit.innerText = "編集";
+                btnEdit.disabled = false;
+                btnEdit.classList.remove('editing');
+                
+                parseText(fullText);
+                drawTimeline(Math.floor(audio.currentTime));
+            })
+            .catch(err => {
+                alert("GitHubへの保存に失敗しました。トークン権限やリポジトリ名を確認してください。");
+                btnEdit.innerText = "保存";
+                btnEdit.disabled = false;
+            });
+        }
+    }
+
     function syncEditorScroll(currentSec) {
         let targetIdx = -1;
         for (let i = 0; i < textTimestamps.length; i++) {
@@ -241,16 +397,7 @@
         }
     }
 
-    function updateTimeLabel() {
-        const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
-        const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
-        const totM = String(Math.floor(totalDuration / 60)).padStart(2, '0');
-        const totS = String(Math.floor(totalDuration % 60)).padStart(2, '0');
-        timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
-    }
-
     window.onload = () => { loadFolderList(); };
 </script>
-
 </body>
 </html>
