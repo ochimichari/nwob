@@ -239,12 +239,21 @@
 
                 if (repo && token) {
                     fetch(`https://github.com{repo}/contents/${path}`, {
-                        headers: { "Authorization": `token ${token}` }
+                        headers: { 
+                            "Authorization": `Bearer ${token}`,
+                            "Accept": "application/vnd.github+json"
+                        }
                     })
                     .then(res => { if (!res.ok) throw new Error(); return res.json(); })
                     .then(json => {
                         currentFileSha = json.sha;
-                        const decodedText = decodeURIComponent(escape(atob(json.content.replace(/\s/g, ''))));
+                        // 日本語対応の安全なデコード方式に変更
+                        const binaryString = atob(json.content.replace(/\s/g, ''));
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        const decodedText = new TextDecoder('utf-8').decode(bytes);
                         parseText(decodedText);
                         resizeCanvas();
                     })
@@ -338,12 +347,19 @@
             }
             const path = `data/${currentLoadedFolder}/${fileName}.txt`;
 
-            const b64Content = btoa(unescape(encodeURIComponent(fullText)));
+            // 日本語対応の安全なBase64エンコード方式に変更
+            const u8array = new TextEncoder().encode(fullText);
+            let binary = '';
+            for (let i = 0; i < u8array.byteLength; i++) {
+                binary += String.fromCharCode(u8array[i]);
+            }
+            const b64Content = btoa(binary);
 
             fetch(`https://github.com{repo}/contents/${path}`, {
                 method: "PUT",
                 headers: {
-                    "Authorization": `token ${token}`,
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/vnd.github+json",
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
@@ -353,7 +369,11 @@
                 })
             })
             .then(res => {
-                if (!res.ok) throw new Error("API送信エラー");
+                if (!res.ok) {
+                    return res.json().then(errData => {
+                        throw new Error(errData.message || "API送信エラー");
+                    });
+                }
                 return res.json();
             })
             .then(json => {
@@ -369,7 +389,7 @@
                 drawTimeline(Math.floor(audio.currentTime));
             })
             .catch(err => {
-                alert("GitHubへの保存に失敗しました。トークン権限やリポジトリ名を確認してください。");
+                alert("GitHubへの保存に失敗しました。\nエラー内容: " + err.message);
                 btnEdit.innerText = "保存";
                 btnEdit.disabled = false;
             });
