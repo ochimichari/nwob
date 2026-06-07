@@ -174,7 +174,7 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
-                    // ★インデックス [0] の脱落を完全に修復しました
+                    // 【オリジナル完全復元】
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -202,7 +202,7 @@
             if (!trimmed || !trimmed.includes(' ')) return;
             
             const parts = trimmed.split(' ');
-            // ★インデックス [0] と [1] の脱落を完全に修復しました
+            // 【オリジナル完全復元】
             const tStr = parts[0];
             const status = parts[1];
             try {
@@ -211,7 +211,6 @@
             } catch(e) {}
         });
     }
-
     audio.addEventListener('loadedmetadata', () => {
         totalDuration = Math.floor(audio.duration);
         updateTimeLabel();
@@ -273,6 +272,7 @@
             }
         }
     }
+
     function updateTimeLabel() {
         const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
         const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
