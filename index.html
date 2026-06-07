@@ -203,7 +203,8 @@
         const totS = String(Math.floor(totalDuration % 60)).padStart(2, '0');
         timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
     }
-    function changeFolder(folderName) {
+    
+     function changeFolder(folderName) {
         audio.pause();
         editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
         
@@ -233,8 +234,8 @@
             .then(colorRaw => {
                 parseColor(colorRaw);
                 
-                const repo = localStorage.getItem('git_repo');
-                const token = localStorage.getItem('git_token');
+                const repo = (localStorage.getItem('git_repo') || "").trim();
+                const token = (localStorage.getItem('git_token') || "").trim();
                 const path = `data/${folderName}/${fileName}.txt`;
 
                 if (repo && token) {
@@ -247,7 +248,7 @@
                     .then(res => { if (!res.ok) throw new Error(); return res.json(); })
                     .then(json => {
                         currentFileSha = json.sha;
-                        // 日本語対応の安全なデコード方式に変更
+                        // 日本語対応の安全なデコード方式
                         const binaryString = atob(json.content.replace(/\s/g, ''));
                         const bytes = new Uint8Array(binaryString.length);
                         for (let i = 0; i < binaryString.length; i++) {
@@ -303,8 +304,8 @@
     }
 
     function toggleEditMode() {
-        const repo = localStorage.getItem('git_repo');
-        const token = localStorage.getItem('git_token');
+        const repo = (localStorage.getItem('git_repo') || "").trim();
+        const token = (localStorage.getItem('git_token') || "").trim();
         
         if (!repo || !token) {
             alert("先に「設定」ボタンからGitHubの連携設定（リポジトリ名・トークン）を行ってください。");
@@ -347,7 +348,7 @@
             }
             const path = `data/${currentLoadedFolder}/${fileName}.txt`;
 
-            // 日本語対応の安全なBase64エンコード方式に変更
+            // 日本語対応の安全なBase64エンコード方式
             const u8array = new TextEncoder().encode(fullText);
             let binary = '';
             for (let i = 0; i < u8array.byteLength; i++) {
