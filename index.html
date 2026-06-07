@@ -25,11 +25,22 @@
         .timeline-container { width: 100%; margin-bottom: 15px; height: 35px; }
         canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; }
 
-        .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; margin-bottom: 8px; padding-left: 4px; border-left: 3px solid #00d2ff; }
+        /* ヘッダーパネルに編集リンク用の横並びスタイルを追加 */
+        .log-header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; padding-left: 4px; border-left: 3px solid #00d2ff; }
+        .edit-link { font-size: 13px; color: #00d2ff; text-decoration: none; cursor: pointer; font-weight: bold; }
+        .edit-link:hover { text-decoration: underline; }
+        .edit-actions { display: none; gap: 10px; }
+        .save-btn { color: #4caf50; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .cancel-btn { color: #ef5350; font-weight: bold; cursor: pointer; font-size: 13px; }
+
         .editor-container { border: 1px solid #1e2433; border-radius: 8px; flex: 1; overflow-y: auto; background: #131722; -webkit-overflow-scrolling: touch; padding: 4px; }
-        .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; }
+        .line { padding: 14px 12px; border-bottom: 1px solid #1c2230; font-size: 13.5px; line-height: 1.6; cursor: pointer; color: #cdd4e0; -webkit-tap-highlight-color: transparent; transition: background 0.1s; outline: none; }
         .line:hover { background: #1c2230; }
         
+        /* 編集中の行スタイル */
+        .editing-line { background: #1a2233 !important; border-bottom: 1px solid #00d2ff !important; color: #fff; cursor: text; }
+
         .highlight { background: #1c2c42 !important; font-weight: bold; color: #fff; border-left: 5px solid #00d2ff; padding-left: 7px; }
     </style>
 </head>
@@ -53,7 +64,16 @@
             <canvas id="timeline-canvas"></canvas>
         </div>
         
-        <div class="log-header-title">Session Logs</div>
+        <div class="log-header-container">
+            <div class="log-header-title">Session Logs</div>
+            <div>
+                <a id="edit-link" class="edit-link" onclick="startEdit()">編集</a>
+                <div id="edit-actions" class="edit-actions">
+                    <span class="save-btn" onclick="saveEdit()">GitHubへ保存</span>
+                    <span class="cancel-btn" onclick="cancelEdit()">キャンセル</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="editor-container" id="editor">
@@ -69,9 +89,14 @@
     const timeDisplay = document.getElementById('time-display');
     const selector = document.getElementById('folder-selector');
 
+    const editLink = document.getElementById('edit-link');
+    const editActions = document.getElementById('edit-actions');
+
     let totalDuration = 0;
     let colorData = {};
     let textTimestamps = [];
+    let isEditing = false;
+    let currentFileSha = ""; 
 
     function resizeCanvas() {
         canvas.width = canvas.parentElement.clientWidth;
@@ -81,7 +106,7 @@
     window.addEventListener('resize', resizeCanvas);
 
     function loadFolderList() {
-        fetch('data/list.txt')
+        fetch(`data/list.txt?_=${Date.now()}`)
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(rawText => {
                 selector.innerHTML = '';
@@ -105,6 +130,8 @@
         colorData = {};
         textTimestamps = [];
         totalDuration = 0;
+        currentFileSha = ""; 
+        cancelEdit(); 
 
         let fileName = folderName;
         if (folderName.includes('_')) {
@@ -115,14 +142,15 @@
         audio.src = `data/${folderName}/${fileName}.mp3`;
         audio.load();
 
-        // 【修正完了】タイポ（import等）を完全に排除した正しい通信構文
+        const cacheBuster = `?_=${Date.now()}`;
         Promise.all([
-            fetch(`data/${folderName}/${fileName}.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
-            fetch(`data/${folderName}/${fileName}_color.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            fetch(`data/${folderName}/${fileName}.txt${cacheBuster}`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
+            fetch(`data/${folderName}/${fileName}_color.txt${cacheBuster}`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
         ]).then(([textRaw, colorRaw]) => {
             parseText(textRaw);
             parseColor(colorRaw);
             resizeCanvas();
+            fetchGitHubSha(folderName, `${fileName}.txt`);
         }).catch(err => {
             editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">データ配置を確認してください。</div>`;
         });
@@ -145,7 +173,6 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
-                    // 【修正完了】配列から安全に時間を取り出して置換
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -155,6 +182,7 @@
             textTimestamps.push(seconds);
 
             div.addEventListener('click', () => {
+                if (isEditing) return;
                 if (seconds !== -1) {
                     audio.currentTime = seconds;
                     audio.play();
@@ -191,7 +219,9 @@
         const currentSeconds = Math.floor(audio.currentTime);
         updateTimeLabel();
         drawTimeline(currentSeconds);
-        syncEditorScroll(currentSeconds);
+        if (!isEditing) {
+            syncEditorScroll(currentSeconds);
+        }
     });
 
     function drawTimeline(currentSec = 0) {
@@ -249,8 +279,123 @@
         timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
     }
 
+    function startEdit() {
+        isEditing = true;
+        editLink.style.display = 'none';
+        editActions.style.display = 'flex';
+        
+        document.querySelectorAll('.line').forEach(el => {
+            el.classList.remove('highlight');
+            el.contentEditable = "true";
+            el.classList.add('editing-line');
+        });
+    }
+
+    function cancelEdit() {
+        isEditing = false;
+        editLink.style.display = 'inline';
+        editActions.style.display = 'none';
+        if (selector.value) {
+            changeFolder(selector.value);
+        }
+    }
+
+    function fetchGitHubSha(folder, file) {
+        const repo = localStorage.getItem('souroku_repo'); 
+        if(!repo) return;
+
+        fetch(`https://github.com{repo}/contents/data/${folder}/${file}`)
+            .then(res => res.json())
+            .then(data => { if(data.sha) currentFileSha = data.sha; })
+            .catch(err => console.error("SHA取得失敗:", err));
+    }
+
+    function saveEdit() {
+        let token = localStorage.getItem('souroku_token');
+        let repo = localStorage.getItem('souroku_repo');
+
+        if (!token || !repo) {
+            token = prompt("GitHub 個人用アクセストークンを入力してください:");
+            repo = prompt("GitHubリポジトリ名を【ユーザー名/リポジトリ名】の形式で入力してください:\n(例: user-name/repo-name)");
+            if (!token || !repo) {
+                alert("設定が足りないため保存できません。");
+                return;
+            }
+            localStorage.setItem('souroku_token', token.trim());
+            localStorage.setItem('souroku_repo', repo.trim());
+        }
+
+        const lines = document.querySelectorAll('.line');
+        let textContent = "";
+        lines.forEach((el, index) => {
+            textContent += el.innerText.trim();
+            if (index < lines.length - 1) textContent += "\n";
+        });
+
+        const folderName = selector.value;
+        let fileName = folderName;
+        if (folderName.includes('_')) {
+            const parts = folderName.split('_');
+            fileName = parts[parts.length - 1];
+        }
+
+        const path = `data/${folderName}/${fileName}.txt`;
+        const utf8Bytes = new TextEncoder().encode(textContent);
+        const base64Content = btoa(String.fromCharCode(...utf8Bytes));
+
+        const bodyData = {
+            message: `web: 合奏ログの更新 (${folderName}/${fileName}.txt)`,
+            content: base64Content,
+            branch: "main" 
+        };
+
+        if (currentFileSha) {
+            bodyData.sha = currentFileSha;
+            executeGitHubPut(repo, path, token, bodyData, folderName);
+        } else {
+            fetch(`https://github.com{repo}/contents/${path}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.sha) bodyData.sha = data.sha;
+                    executeGitHubPut(repo, path, token, bodyData, folderName);
+                })
+                .catch(() => {
+                    executeGitHubPut(repo, path, token, bodyData, folderName);
+                });
+        }
+    }
+
+    function executeGitHubPut(repo, path, token, bodyData, folderName) {
+        fetch(`https://github.com{repo}/contents/${path}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(bodyData)
+        })
+        .then(res => {
+            if (!res.ok) throw new Error("GitHubへの保存に失敗しました。設定を確認してください。");
+            return res.json();
+        })
+        .then(data => {
+            alert("GitHubへの保存に成功しました！\n※反映（ページの更新）には1〜3分ほど時間がかかります。");
+            isEditing = false;
+            editLink.style.display = 'inline';
+            editActions.style.display = 'none';
+            changeFolder(folderName);
+        })
+        .catch(err => {
+            alert(err.message);
+            if(confirm("設定情報をクリアしてやり直しますか？")) {
+                localStorage.removeItem('souroku_token');
+                localStorage.removeItem('souroku_repo');
+            }
+        });
+    }
+
     window.onload = () => { loadFolderList(); };
 </script>
-
 </body>
 </html>
