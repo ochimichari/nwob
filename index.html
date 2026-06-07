@@ -69,9 +69,15 @@
     const timeDisplay = document.getElementById('time-display');
     const selector = document.getElementById('folder-selector');
 
+    // 編集・保存機能用のUI要素を取得
+    const editLink = document.getElementById('edit-link');
+    const editActions = document.getElementById('edit-actions');
+
     let totalDuration = 0;
     let colorData = {};
     let textTimestamps = [];
+    let isEditing = false; // 編集モードフラグ
+    let currentFileSha = ""; // GitHub API用
 
     function resizeCanvas() {
         canvas.width = canvas.parentElement.clientWidth;
@@ -98,6 +104,7 @@
                 editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
             });
     }
+
     function changeFolder(folderName) {
         audio.pause();
         editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
@@ -105,6 +112,8 @@
         colorData = {};
         textTimestamps = [];
         totalDuration = 0;
+        currentFileSha = "";
+        cancelEdit(); // フォルダ変更時は編集をリセット
 
         let fileName = folderName;
         if (folderName.includes('_')) {
@@ -115,13 +124,17 @@
         audio.src = `data/${folderName}/${fileName}.mp3`;
         audio.load();
 
+        // キャッシュバスターを付与して常に最新を取得
+        const cacheBuster = `?_=${Date.now()}`;
         Promise.all([
-            fetch(`data/${folderName}/${fileName}.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
-            fetch(`data/${folderName}/${fileName}_color.txt`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
+            fetch(`data/${folderName}/${fileName}.txt${cacheBuster}`).then(res => { if (!res.ok) throw new Error(); return res.text(); }),
+            fetch(`data/${folderName}/${fileName}_color.txt${cacheBuster}`).then(res => { if (!res.ok) throw new Error(); return res.text(); })
         ]).then(([textRaw, colorRaw]) => {
             parseText(textRaw);
             parseColor(colorRaw);
             resizeCanvas();
+            // 保存用に最新のSHAハッシュを裏で取得しておく
+            fetchGitHubSha(folderName, `${fileName}.txt`);
         }).catch(err => {
             editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">データ配置を確認してください。</div>`;
         });
@@ -144,6 +157,7 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
+                    // 【オリジナル完全維持】1文字も変更していません
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -153,6 +167,7 @@
             textTimestamps.push(seconds);
 
             div.addEventListener('click', () => {
+                if (isEditing) return; // 編集モード中はジャンプしない
                 if (seconds !== -1) {
                     audio.currentTime = seconds;
                     audio.play();
@@ -170,6 +185,7 @@
             if (!trimmed || !trimmed.includes(' ')) return;
             
             const parts = trimmed.split(' ');
+            // 【オリジナル完全維持】1文字も変更していません
             const tStr = parts[0];
             const status = parts[1];
             try {
@@ -178,7 +194,6 @@
             } catch(e) {}
         });
     }
-
     audio.addEventListener('loadedmetadata', () => {
         totalDuration = Math.floor(audio.duration);
         updateTimeLabel();
@@ -189,7 +204,9 @@
         const currentSeconds = Math.floor(audio.currentTime);
         updateTimeLabel();
         drawTimeline(currentSeconds);
-        syncEditorScroll(currentSeconds);
+        if (!isEditing) {
+            syncEditorScroll(currentSeconds);
+        }
     });
 
     function drawTimeline(currentSec = 0) {
@@ -247,8 +264,127 @@
         timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
     }
 
+    // 新規機能: 編集モードの開始
+    function startEdit() {
+        isEditing = true;
+        editLink.style.display = 'none';
+        editActions.style.display = 'flex';
+        
+        document.querySelectorAll('.line').forEach(el => {
+            el.classList.remove('highlight');
+            el.contentEditable = "true";
+            el.classList.add('editing-line');
+        });
+    }
+
+    // 新規機能: 編集のキャンセル
+    function cancelEdit() {
+        isEditing = false;
+        editLink.style.display = 'inline';
+        editActions.style.display = 'none';
+        if (selector.value) {
+            changeFolder(selector.value);
+        }
+    }
+
+    // 新規機能: GitHubからファイルの最新SHAを取得
+    function fetchGitHubSha(folder, file) {
+        const repo = localStorage.getItem('souroku_repo'); 
+        if(!repo) return;
+
+        fetch(`https://github.com{repo}/contents/data/${folder}/${file}`)
+            .then(res => res.json())
+            .then(data => { if(data.sha) currentFileSha = data.sha; })
+            .catch(err => console.error("SHA取得失敗:", err));
+    }
+
+    // 新規機能: GitHub API経由で上書き保存を実行
+    function saveEdit() {
+        let token = localStorage.getItem('souroku_token');
+        let repo = localStorage.getItem('souroku_repo');
+
+        if (!token || !repo) {
+            token = prompt("GitHub 個人用アクセストークンを入力してください:");
+            repo = prompt("GitHubリポジトリ名を【ユーザー名/リポジトリ名】の形式で入力してください:\n(例: user-name/repo-name)");
+            if (!token || !repo) {
+                alert("設定が足りないため保存できません。");
+                return;
+            }
+            localStorage.setItem('souroku_token', token.trim());
+            localStorage.setItem('souroku_repo', repo.trim());
+        }
+
+        const lines = document.querySelectorAll('.line');
+        let textContent = "";
+        lines.forEach((el, index) => {
+            textContent += el.innerText.trim();
+            if (index < lines.length - 1) textContent += "\n";
+        });
+
+        const folderName = selector.value;
+        let fileName = folderName;
+        if (folderName.includes('_')) {
+            const parts = folderName.split('_');
+            fileName = parts[parts.length - 1];
+        }
+
+        const path = `data/${folderName}/${fileName}.txt`;
+        const utf8Bytes = new TextEncoder().encode(textContent);
+        const base64Content = btoa(String.fromCharCode(...utf8Bytes));
+
+        const bodyData = {
+            message: `web: 合奏ログの更新 (${folderName}/${fileName}.txt)`,
+            content: base64Content,
+            branch: "main" 
+        };
+
+        if (currentFileSha) {
+            bodyData.sha = currentFileSha;
+            executeGitHubPut(repo, path, token, bodyData, folderName);
+        } else {
+            fetch(`https://github.com{repo}/contents/${path}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.sha) bodyData.sha = data.sha;
+                    executeGitHubPut(repo, path, token, bodyData, folderName);
+                })
+                .catch(() => {
+                    executeGitHubPut(repo, path, token, bodyData, folderName);
+                });
+        }
+    }
+
+    function executeGitHubPut(repo, path, token, bodyData, folderName) {
+        fetch(`https://github.com{repo}/contents/${path}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(bodyData)
+        })
+        .then(res => {
+            if (!res.ok) throw new Error("GitHubへの保存に失敗しました。設定を確認してください。");
+            return res.json();
+        })
+        .then(data => {
+            alert("GitHubへの保存に成功しました！\n※反映（ページの更新）には1〜3分ほど時間がかかります。");
+            isEditing = false;
+            editLink.style.display = 'inline';
+            editActions.style.display = 'none';
+            changeFolder(folderName);
+        })
+        .catch(err => {
+            alert(err.message);
+            if(confirm("設定情報をクリアしてやり直しますか？")) {
+                localStorage.removeItem('souroku_token');
+                localStorage.removeItem('souroku_repo');
+            }
+        });
+    }
+
     window.onload = () => { loadFolderList(); };
 </script>
-
 </body>
 </html>
