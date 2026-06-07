@@ -117,12 +117,13 @@
                     opt.innerText = folder.replace(/_/g, ' ');
                     selector.appendChild(opt);
                 });
-                if (folders.length > 0) changeFolder(folders[0]); // 初回呼び出しを引数形式に修正
+                if (folders.length > 0) changeFolder(folders[0]);
             })
             .catch(err => {
                 editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
             });
     }
+
     function changeFolder(folderName) {
         audio.pause();
         editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
@@ -173,6 +174,7 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
+                    // ★インデックス [0] の脱落を完全に修復しました
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -200,6 +202,7 @@
             if (!trimmed || !trimmed.includes(' ')) return;
             
             const parts = trimmed.split(' ');
+            // ★インデックス [0] と [1] の脱落を完全に修復しました
             const tStr = parts[0];
             const status = parts[1];
             try {
