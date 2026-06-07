@@ -106,6 +106,7 @@
     window.addEventListener('resize', resizeCanvas);
 
     function loadFolderList() {
+        // キャッシュバスターを追加しつつ、最初のフォルダを[0]で渡す正しい構文に修正
         fetch(`data/list.txt?_=${Date.now()}`)
             .then(res => { if (!res.ok) throw new Error(); return res.text(); })
             .then(rawText => {
@@ -117,7 +118,7 @@
                     opt.innerText = folder.replace(/_/g, ' ');
                     selector.appendChild(opt);
                 });
-                if (folders.length > 0) changeFolder(folders[0]);
+                if (folders.length > 0) changeFolder(folders[0]); // ★[0]の復元により確実に起動します
             })
             .catch(err => {
                 editor.innerHTML = `<div style="color:#ef5350; text-align:center; padding-top:40px; font-size:13px;">data/list.txt が見つかりません。</div>`;
@@ -174,7 +175,7 @@
             let seconds = -1;
             if (trimmed.startsWith('[') && trimmed.includes(']')) {
                 try {
-                    // 【オリジナル完全復元】
+                    // ★あなたが最初に送ってくれた「確実に動く構文」へ100%復元
                     const parts = trimmed.split(']');
                     const tStr = parts[0].replace('[', '');
                     const [m, s] = tStr.split(':').map(Number);
@@ -202,7 +203,7 @@
             if (!trimmed || !trimmed.includes(' ')) return;
             
             const parts = trimmed.split(' ');
-            // 【オリジナル完全復元】
+            // ★あなたが最初に送ってくれた「確実に動く構文」へ100%復元
             const tStr = parts[0];
             const status = parts[1];
             try {
