@@ -207,15 +207,42 @@
         ctx.fillStyle = "#00d2ff";
         ctx.fillRect(indX - 1, 0, 3, canvas.height);
     }
-
-    canvas.addEventListener('click', (e) => {
+    
+    // マウスが押されているかを管理するフラグ
+    let isDragging = false;
+    
+    // ドラッグ中（またはクリック）の再生位置更新関数
+    function seekFromCanvas(e) {
         if (!totalDuration) return;
         const rect = canvas.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-        const targetSec = Math.floor((clickX / canvas.width) * totalDuration);
+        // X座標を0〜1の範囲にクランプ（枠外ドラッグ対応）
+        const ratio = Math.max(0, Math.min(1, clickX / canvas.width));
+        const targetSec = Math.floor(ratio * totalDuration);
         audio.currentTime = targetSec;
+    }
+    
+    // 1. マウスダウン：ドラッグ開始
+    canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        seekFromCanvas(e);
     });
-
+    
+    // 2. マウスムーブ：ドラッグ中ならシーク
+    canvas.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            seekFromCanvas(e);
+        }
+    });
+    
+    // 3. マウスアップ/リーブ：ドラッグ終了
+    canvas.addEventListener('mouseup', () => {
+        isDragging = false;
+    });
+    canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+    });
+    
     function updateTimeLabel() {
         const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
         const curS = String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
