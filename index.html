@@ -65,6 +65,7 @@
         <div class="log-header-container">
             <div class="log-header-title">Session Logs</div>
             <div class="btn-group">
+                <button class="btn btn-setting" onclick="toggleAutoScroll()" id="btn-autoscroll">追従: ON</button>
                 <button class="btn btn-setting" onclick="setupGitConfig()">設定</button>
                 <button id="btn-edit" class="btn btn-edit" onclick="toggleEditMode()">編集</button>
             </div>
@@ -165,8 +166,13 @@
         const currentSeconds = Math.floor(audio.currentTime);
         updateTimeLabel();
         drawTimeline(currentSeconds);
-        if (!isEditing) {
+        
+        // 編集中でかつ、追従が有効な場合のみスクロールを実行
+        if (!isEditing && isAutoScrollEnabled) {
             syncEditorScroll(currentSeconds);
+        } else if (!isEditing && !isAutoScrollEnabled) {
+            // 追従OFFでも、ハイライトだけは継続させたい場合は以下を残す
+            highlightActiveLine(currentSeconds);
         }
     });
 
@@ -405,6 +411,16 @@
     }
 
     function syncEditorScroll(currentSec) {
+        const activeLine = highlightActiveLine(currentSec);
+        if (activeLine) {
+            editor.scrollTo({
+                top: activeLine.offsetTop - editor.offsetTop - 20,
+                behavior: 'smooth'
+            });
+        }
+    
+    // スクロール処理とハイライト処理を分離するとより使いやすくなります
+    function highlightActiveLine(currentSec) {
         let targetIdx = -1;
         for (let i = 0; i < textTimestamps.length; i++) {
             if (textTimestamps[i] !== -1 && textTimestamps[i] <= currentSec) {
@@ -417,14 +433,23 @@
             const activeLine = document.getElementById(`line-${targetIdx}`);
             if (activeLine) {
                 activeLine.classList.add('highlight');
-                editor.scrollTo({
-                    top: activeLine.offsetTop - editor.offsetTop - 20,
-                    behavior: 'smooth'
-                });
+                return activeLine; // 要素を返す
             }
         }
+        return null;
     }
 
+    // 追加：追従機能の状態管理
+    let isAutoScrollEnabled = true;
+    
+    // トグル関数の追加
+    function toggleAutoScroll() {
+        isAutoScrollEnabled = !isAutoScrollEnabled;
+        const btn = document.getElementById('btn-autoscroll');
+        btn.innerText = isAutoScrollEnabled ? "追従: ON" : "追従: OFF";
+        btn.style.background = isAutoScrollEnabled ? "#1e2433" : "#333"; // オフ時は少し色を変える
+    }
+    
     window.onload = () => { loadFolderList(); };
 </script>
 </body>
