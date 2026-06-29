@@ -432,10 +432,9 @@
                 behavior: 'smooth'
             });
         }
-    }
+    } // ← ここで syncEditorScroll をしっかり閉じる
     
-    // スクロール処理とハイライト処理を分離するとより使いやすくなります
-    function highlightActiveLine(currentSec) {
+    function highlightActiveLine(currentSec) { // ← 関数を独立させる
         let targetIdx = -1;
         for (let i = 0; i < textTimestamps.length; i++) {
             if (textTimestamps[i] !== -1 && textTimestamps[i] <= currentSec) {
@@ -448,12 +447,11 @@
             const activeLine = document.getElementById(`line-${targetIdx}`);
             if (activeLine) {
                 activeLine.classList.add('highlight');
-                return activeLine; // 要素を返す
+                return activeLine;
             }
         }
         return null;
     }
-
     // 追加：追従機能の状態管理
     let isAutoScrollEnabled = true;
     
