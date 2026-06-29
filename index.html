@@ -59,23 +59,15 @@
             <div class="panel-title">Select session</div>
             <select id="folder-selector" onchange="changeFolder(this.value)"></select>
         </div>
-        
+              
         <div class="player-panel">
             <audio id="audio" controls></audio>
-            
-        <div class="player-panel">
-            <audio id="audio" controls></audio>
-            
             <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px;">
                 <button class="btn btn-setting" style="padding: 8px 16px;" onclick="skip(-5)">-5秒</button>
                 <div class="time-display" id="time-display" style="flex-grow: 1; text-align: center;">00:00 / 00:00</div>
                 <button class="btn btn-setting" style="padding: 8px 16px;" onclick="skip(5)">+5秒</button>
             </div>
         </div>
-        
-            <div class="time-display" id="time-display">00:00 / 00:00</div>
-        </div>
-
         <div class="timeline-container">
             <canvas id="timeline-canvas"></canvas>
         </div>
