@@ -63,18 +63,15 @@
         <div class="player-panel">
             <audio id="audio" controls></audio>
             
-            <div style="display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 5px;">
-                <button class="btn btn-setting" onclick="skip(-5)">-5秒</button>
-                <select id="speed-selector" onchange="changeSpeed(this.value)" style="width: auto; padding: 4px 8px;">
-                    <option value="0.5">0.5x</option>
-                    <option value="0.75">0.75x</option>
-                    <option value="1.0" selected>1.0x</option>
-                    <option value="1.25">1.25x</option>
-                    <option value="1.5">1.5x</option>
-                    <option value="2.0">2.0x</option>
-                </select>
-                <button class="btn btn-setting" onclick="skip(5)">+5秒</button>
+        <div class="player-panel">
+            <audio id="audio" controls></audio>
+            
+            <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px;">
+                <button class="btn btn-setting" style="padding: 8px 16px;" onclick="skip(-5)">-5秒</button>
+                <div class="time-display" id="time-display" style="flex-grow: 1; text-align: center;">00:00 / 00:00</div>
+                <button class="btn btn-setting" style="padding: 8px 16px;" onclick="skip(5)">+5秒</button>
             </div>
+        </div>
         
             <div class="time-display" id="time-display">00:00 / 00:00</div>
         </div>
@@ -510,12 +507,7 @@
     function skip(seconds) {
         audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
     }
-    
-    // 再生速度変更機能
-    function changeSpeed(speed) {
-        audio.playbackRate = parseFloat(speed);
-    }
-    
+      
     window.onload = () => { loadFolderList(); };
 </script>
 </body>
