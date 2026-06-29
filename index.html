@@ -211,37 +211,33 @@
     // マウスが押されているかを管理するフラグ
     let isDragging = false;
     
-    // ドラッグ中（またはクリック）の再生位置更新関数
-    function seekFromCanvas(e) {
+    // スクラブ再生の共通処理
+    function seekFromEvent(e) {
         if (!totalDuration) return;
+        
+        // タッチイベントの場合は座標の取得元を変える
+        const clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
+        
         const rect = canvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        // X座標を0〜1の範囲にクランプ（枠外ドラッグ対応）
-        const ratio = Math.max(0, Math.min(1, clickX / canvas.width));
-        const targetSec = Math.floor(ratio * totalDuration);
-        audio.currentTime = targetSec;
+        const x = clientX - rect.left;
+        const ratio = Math.max(0, Math.min(1, x / canvas.width));
+        audio.currentTime = Math.floor(ratio * totalDuration);
     }
     
-    // 1. マウスダウン：ドラッグ開始
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        seekFromCanvas(e);
-    });
+    // 共通のドラッグ開始処理
+    canvas.addEventListener('mousedown', (e) => { isDragging = true; seekFromEvent(e); });
+    canvas.addEventListener('touchstart', (e) => { isDragging = true; seekFromEvent(e); e.preventDefault(); }, {passive: false});
     
-    // 2. マウスムーブ：ドラッグ中ならシーク
-    canvas.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            seekFromCanvas(e);
-        }
-    });
+    // 共通のドラッグ中処理
+    canvas.addEventListener('mousemove', (e) => { if (isDragging) seekFromEvent(e); });
+    canvas.addEventListener('touchmove', (e) => { if (isDragging) seekFromEvent(e); e.preventDefault(); }, {passive: false});
     
-    // 3. マウスアップ/リーブ：ドラッグ終了
-    canvas.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
-    canvas.addEventListener('mouseleave', () => {
-        isDragging = false;
-    });
+    // 共通の終了処理
+    const stopDragging = () => { isDragging = false; };
+    canvas.addEventListener('mouseup', stopDragging);
+    canvas.addEventListener('mouseleave', stopDragging);
+    canvas.addEventListener('touchend', stopDragging);
+    canvas.addEventListener('touchcancel', stopDragging);
     
     function updateTimeLabel() {
         const curM = String(Math.floor(audio.currentTime / 60)).padStart(2, '0');
