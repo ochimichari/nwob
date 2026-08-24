@@ -15,7 +15,8 @@
         h3 { margin: 5px 0 15px 0; color: #00d2ff; text-align: center; font-size: 18px; font-weight: bold; letter-spacing: 0.5px; border-bottom: 1px solid #1a1e26; padding-bottom: 10px; }
         
         .selector-panel { background: #131722; padding: 12px; border-radius: 8px; border: 1px solid #1e2433; margin-bottom: 12px; }
-        .panel-title { font-size: 14px; font-weight: bold; color: #00d2ff; margin-bottom: 8px; padding-left: 4px; border-left: 3px solid #00d2ff; }
+        .panel-title { font-size: 14px; font-weight: bold; color: #00d2ff; margin-bottom: 8px; padding-left: 4px; border-left: 3px solid #00d2ff; display: flex; justify-content: space-between; align-items: center; }
+        .play-count-badge { font-size: 12px; background: #1c2230; color: #00d2ff; padding: 2px 8px; border-radius: 12px; border: 1px solid #2a3247; }
         select { width: 100%; padding: 12px; font-size: 14px; border-radius: 6px; border: 1px solid #2a3247; background: #1c2230; color: #fff; font-weight: bold; outline: none; }
 
         .player-panel { background: #131722; padding: 12px; border-radius: 8px; border: 1px solid #00d2ff; box-shadow: 0 0 10px rgba(0,210,255,0.2); margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -23,13 +24,8 @@
         .time-display { font-family: monospace; font-size: 13px; font-weight: bold; text-align: right; padding-right: 4px; color: #00d2ff; }
 
         .timeline-container { width: 100%; margin-bottom: 15px; height: 35px; }
-        canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; }
-        canvas {
-            /* これを追加：タッチ中のブラウザのスクロール動作を抑制 */
-            touch-action: none; 
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
-        }
+        canvas { width: 100%; height: 100%; background: #131722; border-radius: 6px; cursor: pointer; display: block; border: 1px solid #1e2433; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        
         .log-header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .log-header-title { font-size: 14px; font-weight: bold; color: #00d2ff; padding-left: 4px; border-left: 3px solid #00d2ff; }
         .btn-group { display: flex; gap: 6px; }
@@ -45,8 +41,6 @@
         .edit-input { width: 100%; padding: 6px 10px; font-size: 13.5px; background: #1c2230; border: 1px solid #00d2ff; color: #fff; border-radius: 4px; outline: none; font-family: inherit; }
         
         .highlight { background: #1c2c42 !important; font-weight: bold; color: #fff; border-left: 5px solid #00d2ff; padding-left: 7px; }
-
-
     </style>
 </head>
 <body>
@@ -56,10 +50,13 @@
         <h3>奏録 / SOUROKU</h3>
         
         <div class="selector-panel">
-            <div class="panel-title">Select session</div>
+            <div class="panel-title">
+                <span>Select session</span>
+                <span class="play-count-badge" id="play-count-badge">再生回数: -</span>
+            </div>
             <select id="folder-selector" onchange="changeFolder(this.value)"></select>
         </div>
-              
+            
         <div class="player-panel">
             <audio id="audio" controls></audio>
             <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 8px;">
@@ -94,6 +91,7 @@
     const timeDisplay = document.getElementById('time-display');
     const selector = document.getElementById('folder-selector');
     const btnEdit = document.getElementById('btn-edit');
+    const playCountBadge = document.getElementById('play-count-badge');
 
     let totalDuration = 0;
     let colorData = {};
@@ -102,6 +100,9 @@
     let isEditing = false;
     let currentLoadedFolder = "";
     let currentFileSha = ""; 
+    let currentCountsSha = "";
+    let globalPlayCounts = {};
+    let hasCountedPlay = false; 
 
     function resizeCanvas() {
         canvas.width = canvas.parentElement.clientWidth;
@@ -116,6 +117,9 @@
         
         const token = prompt("GitHubの個人用アクセストークン(PAT)を入力してください", localStorage.getItem('git_token') || "");
         if (token) localStorage.setItem('git_token', token.trim());
+        
+        // 設定更新後に再読み込みして最新のカウントを反映
+        if (currentLoadedFolder) loadGlobalPlayCounts(currentLoadedFolder);
     }
 
     function loadFolderList() {
@@ -172,19 +176,114 @@
         resizeCanvas();
     });
 
+    // 再生が開始されたとき、GitHub上のカウントをインクリメントして保存
+    audio.addEventListener('play', () => {
+        if (!hasCountedPlay && currentLoadedFolder) {
+            hasCountedPlay = true;
+            incrementGlobalPlayCount(currentLoadedFolder);
+        }
+    });
+
     audio.addEventListener('timeupdate', () => {
         const currentSeconds = Math.floor(audio.currentTime);
         updateTimeLabel();
         drawTimeline(currentSeconds);
         
-        // 編集中でかつ、追従が有効な場合のみスクロールを実行
         if (!isEditing && isAutoScrollEnabled) {
             syncEditorScroll(currentSeconds);
         } else if (!isEditing && !isAutoScrollEnabled) {
-            // 追従OFFでも、ハイライトだけは継続させたい場合は以下を残す
             highlightActiveLine(currentSeconds);
         }
     });
+
+    // GitHub上の play_counts.json から全曲の再生回数を取得する
+    function loadGlobalPlayCounts(folderName) {
+        const repo = (localStorage.getItem('git_repo') || "").trim();
+        const token = (localStorage.getItem('git_token') || "").trim();
+        
+        if (!repo || !token) {
+            playCountBadge.innerText = "再生回数: (設定未完了)";
+            return;
+        }
+
+        const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
+        fetch(apiDomain + repo + "/contents/data/play_counts.json", {
+            headers: { 
+                "Authorization": "Bearer " + token,
+                "Accept": "application/vnd.github+json",
+                "Cache-Control": "no-cache"
+            }
+        })
+        .then(res => {
+            if (!res.ok) throw new Error();
+            return res.json();
+        })
+        .then(json => {
+            currentCountsSha = json.sha;
+            const binaryString = atob(json.content.replace(/\s/g, ''));
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const decodedText = new TextDecoder('utf-8').decode(bytes);
+            globalPlayCounts = JSON.parse(decodedText || "{}");
+            
+            const count = globalPlayCounts[folderName] || 0;
+            playCountBadge.innerText = `再生回数: ${count}回`;
+        })
+        .catch(() => {
+            // ファイルがまだ無い場合などのフォールバック
+            globalPlayCounts = {};
+            playCountBadge.innerText = `再生回数: 0回`;
+        });
+    }
+
+    // 再生回数を+1してGitHub上のファイルを更新する
+    function incrementGlobalPlayCount(folderName) {
+        const repo = (localStorage.getItem('git_repo') || "").trim();
+        const token = (localStorage.getItem('git_token') || "").trim();
+        
+        if (!repo || !token) return;
+
+        // まず最新のcountsを再取得または手元でインクリメント
+        globalPlayCounts[folderName] = (globalPlayCounts[folderName] || 0) + 1;
+        const count = globalPlayCounts[folderName];
+        playCountBadge.innerText = `再生回数: ${count}回`;
+
+        const fullText = JSON.stringify(globalPlayCounts, null, 2);
+        const u8array = new TextEncoder().encode(fullText);
+        let binary = '';
+        for (let i = 0; i < u8array.byteLength; i++) {
+            binary += String.fromCharCode(u8array[i]);
+        }
+        const b64Content = btoa(binary);
+
+        const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
+
+        fetch(apiDomain + repo + "/contents/data/play_counts.json", {
+            method: "PUT",
+            headers: {
+                "Authorization": "Bearer " + token,
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                message: "Update play count for " + folderName,
+                content: b64Content,
+                sha: currentCountsSha
+            })
+        })
+        .then(res => {
+            if (!res.ok) throw new Error();
+            return res.json();
+        })
+        .then(json => {
+            currentCountsSha = json.content.sha; // 次回更新用にSHAを更新
+        })
+        .catch(err => {
+            console.error("再生回数の保存に失敗しました", err);
+        });
+    }
 
     function drawTimeline(currentSec = 0) {
         if (!totalDuration) return;
@@ -204,23 +303,17 @@
         ctx.fillRect(indX - 1, 0, 3, canvas.height);
     }
     
-    // マウスが押されているかを管理するフラグ
     let isDragging = false;
     
-    // スクラブ再生の共通処理
     function seekFromEvent(e) {
         if (!totalDuration) return;
-        
-        // タッチまたはマウスの座標取得
         const clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
-        
         const rect = canvas.getBoundingClientRect();
         const x = clientX - rect.left;
         const ratio = Math.max(0, Math.min(1, x / canvas.width));
         audio.currentTime = Math.floor(ratio * totalDuration);
     }
     
-    // 共通リスナー
     function onStart(e) {
         isDragging = true;
         seekFromEvent(e);
@@ -229,7 +322,6 @@
     function onMove(e) {
         if (isDragging) {
             seekFromEvent(e);
-            // タッチ操作の場合はスクロールを止める
             if (e.cancelable) e.preventDefault();
         }
     }
@@ -238,10 +330,9 @@
         isDragging = false;
     }
     
-    // イベント登録（mousedown/touchstart を明確に分ける）
     canvas.addEventListener('mousedown', onStart);
     canvas.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd); // windowで受け取ることで、枠外で離しても止まる
+    window.addEventListener('mouseup', onEnd);
     
     canvas.addEventListener('touchstart', onStart, { passive: false });
     canvas.addEventListener('touchmove', onMove, { passive: false });
@@ -256,7 +347,7 @@
         timeDisplay.innerText = `${curM}:${curS} / ${totM}:${totS}`;
     }
     
-     function changeFolder(folderName) {
+    function changeFolder(folderName) {
         audio.pause();
         editor.innerHTML = `<div style="color: #64748b; text-align: center; padding-top: 60px;">読み込み中...</div>`;
         
@@ -271,6 +362,10 @@
         totalDuration = 0;
         currentLoadedFolder = folderName;
         currentFileSha = ""; 
+        hasCountedPlay = false; 
+
+        // GitHubから最新の共通再生回数を取得して表示
+        loadGlobalPlayCounts(folderName);
 
         let fileName = folderName;
         if (folderName.includes('_')) {
@@ -291,7 +386,6 @@
                 const path = `data/${folderName}/${fileName}.txt`;
                 
                 if (repo && token) {
-                    // ドメイン文字が崩れないように完全に文字配列から組み立てています
                     const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
                     
                     fetch(apiDomain + repo + "/contents/" + path, {
@@ -403,7 +497,6 @@
             }
             const path = `data/${currentLoadedFolder}/${fileName}.txt`;
 
-            // 日本語対応の安全なBase64エンコード方式
             const u8array = new TextEncoder().encode(fullText);
             let binary = '';
             for (let i = 0; i < u8array.byteLength; i++) {
@@ -413,7 +506,6 @@
 
             const apiDomain = ["https:", "", "api.github.com", "repos", ""].join("/");
 
-            // 保存を実行する fetch 通信部分
             fetch(apiDomain + repo + "/contents/" + path, {
                 method: "PUT",
                 headers: {
@@ -427,7 +519,6 @@
                     sha: currentFileSha
                 })
             })
-
             .then(res => {
                 if (!res.ok) {
                     return res.json().then(errData => {
@@ -437,7 +528,7 @@
                 return res.json();
             })
             .then(json => {
-                alert("GitHubへの上書き保存が成功しました！\n(※Pagesの反映には数分かかる場合があります)");
+                alert("GitHub上のログファイル更新が成功しました！");
                 currentFileSha = json.content.sha;
                 
                 isEditing = false;
@@ -449,7 +540,7 @@
                 drawTimeline(Math.floor(audio.currentTime));
             })
             .catch(err => {
-                alert("GitHubへの保存に失敗しました。\nエラー内容: " + err.message);
+                alert("保存に失敗しました。\nエラー内容: " + err.message);
                 btnEdit.innerText = "保存";
                 btnEdit.disabled = false;
             });
@@ -464,9 +555,9 @@
                 behavior: 'smooth'
             });
         }
-    } // ← ここで syncEditorScroll をしっかり閉じる
+    }
     
-    function highlightActiveLine(currentSec) { // ← 関数を独立させる
+    function highlightActiveLine(currentSec) {
         let targetIdx = -1;
         for (let i = 0; i < textTimestamps.length; i++) {
             if (textTimestamps[i] !== -1 && textTimestamps[i] <= currentSec) {
@@ -484,18 +575,16 @@
         }
         return null;
     }
-    // 追加：追従機能の状態管理
+
     let isAutoScrollEnabled = true;
     
-    // トグル関数の追加
     function toggleAutoScroll() {
         isAutoScrollEnabled = !isAutoScrollEnabled;
         const btn = document.getElementById('btn-autoscroll');
         btn.innerText = isAutoScrollEnabled ? "追従: ON" : "追従: OFF";
-        btn.style.background = isAutoScrollEnabled ? "#1e2433" : "#333"; // オフ時は少し色を変える
+        btn.style.background = isAutoScrollEnabled ? "#1e2433" : "#333";
     }
 
-    // 5秒スキップ機能
     function skip(seconds) {
         audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
     }
